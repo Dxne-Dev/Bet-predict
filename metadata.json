@@ -1,0 +1,5 @@
+{
+  "name": "Pronostics Sportifs IA",
+  "description": "Une application web avancée utilisant l'IA pour générer des prédictions et des pronostics détaillés pour divers événements sportifs. L'application propose une analyse d'événements uniques, un constructeur de tickets et des suggestions de méga-paris.",
+  "requestFramePermissions": []
+}
