@@ -1,350 +1,280 @@
-import { GoogleGenAI } from '@google/genai';
-import { Event, Prediction, BetSlip } from '../types';
 
-const API_KEY = process.env.API_KEY;
+import { GoogleGenAI, Type } from '@google/genai';
+import { Event, Prediction, BetSlip, GoalscorerPrediction, NbaDigitResult } from '../types';
 
-if (!API_KEY) {
-    throw new Error("API_KEY environment variable not set.");
-}
+// Always use a named parameter for apiKey and direct process.env access.
+const ai = new GoogleGenAI({ apiKey: process.env.API_KEY });
 
-const ai = new GoogleGenAI({ apiKey: API_KEY });
-
-/**
- * Extracts a JSON object from a string that might contain markdown code fences.
- * @param text The text response from the AI.
- * @returns The clean JSON string.
- */
-function extractJson(text: string): string | null {
-    const match = text.match(/```json\n([\s\S]*?)\n```/);
-    if (match && match[1]) {
-        return match[1].trim();
+const BET_SLIP_SCHEMA = {
+  type: Type.OBJECT,
+  properties: {
+    title: { type: Type.STRING },
+    analysis: { type: Type.STRING },
+    bets: {
+      type: Type.ARRAY,
+      items: {
+        type: Type.OBJECT,
+        properties: {
+          event: { type: Type.STRING },
+          market: { type: Type.STRING },
+          prediction: { type: Type.STRING },
+          justification: { type: Type.STRING }
+        },
+        required: ["event", "market", "prediction"]
+      }
     }
-     // Fallback for responses that might just be the JSON string without fences
-    if (text.trim().startsWith('[') || text.trim().startsWith('{')) {
-        return text.trim();
-    }
-    return null;
-}
+  },
+  required: ["title", "bets"]
+};
 
+const PREDICTION_SCHEMA = {
+  type: Type.ARRAY,
+  items: {
+    type: Type.OBJECT,
+    properties: {
+      market: { type: Type.STRING },
+      prediction: { type: Type.STRING },
+      confidence: { type: Type.STRING },
+      justification: { type: Type.STRING }
+    },
+    required: ["market", "prediction", "confidence", "justification"]
+  }
+};
 
 export const geminiService = {
-  getSingleEventPrediction: async (event: Event): Promise<Prediction[]> => {
-    const prompt = `Tu es un puissant analyste de paris sportifs. Ta tâche est de fournir des prédictions précises basées sur des données vérifiées via une recherche web.
+  getBestChoiceAnalysis: async (sport: string, date: string): Promise<{intro: string, recommendations: any[], conclusion: string}> => {
+    const isFootball = sport.toLowerCase().includes('foot');
+    
+    // Logique de prompt différenciée selon le sport
+    const specializedContext = isFootball ? `
+    DIRECTIVES ANALYTIQUES SPÉCIFIQUES AU FOOTBALL (PRO++) :
+    Ton analyse doit se concentrer EXCLUSIVEMENT sur les marchés de "Résultats du Combiné".
+    Tu dois pondérer ton Score de Confiance (0-100) ainsi :
+    1. FACTEURS GRANULAIRES (60%) : 
+       - CORNERS (30%) : Moyenne par match, tendances par équipe (ailes).
+       - CARTONS (30%) : Style de l'arbitre et agressivité défensive.
+    2. SCÉNARIO DE MATCH (40%) : 
+       - BUTS PAR MI-TEMPS (20%) : Probabilité de score en 1ère/2ème MT.
+       - RÉSULTAT FINAL (20%) : V1/X/V2 combiné aux stats ci-dessus.
+    
+    EXEMPLES DE MARCHÉS REQUIS : 
+    - "V1 & Moins de 10 Corners & Plus de 6 Cartons"
+    - "Plus de 2.5 Buts & Plus de 8.5 Corners & Plus de 3.5 Cartons"
+    - "Penalty accordé aux deux équipes"
+    ` : `
+    DIRECTIVES ANALYTIQUES POUR LES AUTRES SPORTS (${sport}) :
+    Ne propose PAS de marchés de corners ou cartons si ce n'est pas applicable.
+    Concentre-toi sur les MARCHÉS DE BASE (Vainqueur, Total Points/Buts, Handicap/Spread).
+    Ton Score de Confiance (0-100) doit être pondéré ainsi :
+    1. PERFORMANCE PURE (60%) : Efficacité offensive/défensive (ex: FG% en NBA, Ace% au Tennis).
+    2. ÉTAT DES EFFECTIFS (20%) : Blessures clés, fatigue (back-to-back), forme sur 5 matchs.
+    3. CONTEXTE & ENJEUX (20%) : Historique des face-à-face et importance de la rencontre.
+    `;
 
-**ACTION REQUISE :**
-1.  **Vérification via Recherche Google :** Utilise l'outil de recherche Google pour confirmer **SANS AUCUN DOUTE** que le match de ${event.sport} entre ${event.teamA.name} et ${event.teamB.name} est officiellement programmé pour le ${event.date}. C'est l'étape la plus critique.
-2.  **Scénarios de Réponse :**
-    *   **Si la recherche ne confirme PAS le match** à cette date, ta seule et unique réponse doit être un bloc de code JSON contenant un tableau vide: \`\`\`json\n[]\n\`\`\`
-    *   **Si la recherche CONFIRME le match :** Procède à une analyse approfondie. NE PAS INVENTER de statistiques. Fournis des prédictions pour les marchés de paris courants.
+    const prompt = `Tu es un Agent Décisionnel expert en paris sportifs (Mode Pro++).
+    Sport : ${sport}
+    Date : ${date}
 
-**FORMAT DE SORTIE STRICT :**
-La sortie doit être **exclusivement** un bloc de code JSON valide contenant un **tableau** d'objets de prédiction. Ne rien inclure d'autre.
+    ${specializedContext}
 
-**Schéma JSON pour chaque objet Prediction :**
-\`\`\`
-{
-  "market": "string",
-  "prediction": "string",
-  "confidence": "Faible" | "Moyenne" | "Haute",
-  "justification": "string"
-}
-\`\`\`
-
-**Exemple de réponse valide :**
-\`\`\`json
-[
-  {
-    "market": "Vainqueur du match",
-    "prediction": "${event.teamA.name}",
-    "confidence": "Haute",
-    "justification": "L'équipe A est sur une série de 5 victoires et joue à domicile."
-  },
-  {
-    "market": "Total de Buts",
-    "prediction": "Plus de 2.5",
-    "confidence": "Moyenne",
-    "justification": "Les deux équipes ont des attaques prolifiques cette saison."
-  }
-]
-\`\`\`
-`;
+    MISSION :
+    1. Utilise Google Search pour trouver les rencontres réelles majeures de ${sport} le ${date}.
+    2. Identifie les recommandations à haute confiance.
+    3. Format de narration requis : "Après avoir analysé [les statistiques spécifiques au sport], je vous recommande pour le marché [X] de choisir [Z] car [Analyse détaillée basée sur les pondérations demandées]... vous maximisez vos chances via [Synthèse]."
+    
+    FORMAT DE RÉPONSE (JSON) :
+    {
+      "intro": "Introduction expliquant la méthodologie de scan pour ${sport} le ${date}.",
+      "recommendations": [
+        {
+          "match": "Nom du match",
+          "market": "Le marché précis (Combiné pour le Foot, Standard pour les autres)",
+          "choice": "L'option recommandée",
+          "confidence": "Score de confiance pondéré (0-100)",
+          "reasoning": "Analyse complète suivant le format narratif."
+        }
+      ],
+      "conclusion": "Verdict final de l'expert pour cette journée de ${sport}."
+    }`;
 
     const response = await ai.models.generateContent({
-        model: 'gemini-2.5-pro',
+        model: 'gemini-3-flash-preview',
         contents: prompt,
         config: {
             tools: [{googleSearch: {}}],
+            responseMimeType: "application/json",
+            responseSchema: {
+                type: Type.OBJECT,
+                properties: {
+                    intro: { type: Type.STRING },
+                    recommendations: {
+                        type: Type.ARRAY,
+                        items: {
+                            type: Type.OBJECT,
+                            properties: {
+                                match: { type: Type.STRING },
+                                market: { type: Type.STRING },
+                                choice: { type: Type.STRING },
+                                confidence: { type: Type.NUMBER },
+                                reasoning: { type: Type.STRING }
+                            },
+                            required: ["match", "market", "choice", "reasoning"]
+                        }
+                    },
+                    conclusion: { type: Type.STRING }
+                },
+                required: ["intro", "recommendations", "conclusion"]
+            }
+        }
+    });
+    return JSON.parse(response.text || '{}');
+  },
+
+  getSingleEventPrediction: async (event: Event): Promise<Prediction[]> => {
+    const prompt = `Analyse le match de ${event.sport} : ${event.teamA.name} vs ${event.teamB.name} le ${event.date}.
+    INSTRUCTIONS : 1. Recherche sur Google pour confirmer l'événement. 2. Donne 3-4 prédictions. FORMAT : JSON (Tableau d'objets Prediction).`;
+    const response = await ai.models.generateContent({
+        model: 'gemini-3-flash-preview', 
+        contents: prompt,
+        config: { 
+          tools: [{googleSearch: {}}],
+          responseMimeType: "application/json",
+          responseSchema: PREDICTION_SCHEMA
         },
     });
-
-    const jsonString = extractJson(response.text);
-    if (!jsonString) {
-        if (response.text.trim() === '[]') return [];
-        throw new Error("Impossible d'extraire le JSON de la réponse de l'IA.");
-    }
-    
-    const parsedData = JSON.parse(jsonString);
-
-    if (Array.isArray(parsedData)) {
-      return parsedData as Prediction[];
-    }
-    
-    if (typeof parsedData === 'object' && parsedData !== null) {
-      if (Object.keys(parsedData).length === 0) {
-        return [];
-      }
-      return [parsedData] as Prediction[];
-    }
-    
-    throw new Error("La réponse de l'IA n'est ni un tableau ni un objet de prédiction valide.");
+    return JSON.parse(response.text || '[]');
   },
 
   buildTicket: async (sport: string, eventCount: number, dateRange: string): Promise<BetSlip> => {
-    const prompt = `Agis en tant qu'analyste de paris sportifs spécialisé dans la création de combinés sécurisés.
-    
-**ACTION REQUISE :**
-1.  **Recherche d'Événements Réels :** Utilise l'outil de recherche Google pour trouver ${eventCount} matchs réels et confirmés de ${sport} qui auront lieu ${dateRange}. Concentre-toi sur les ligues majeures et bien connues. Ta sélection doit se baser **uniquement** sur des événements que tu as pu vérifier via la recherche.
-2.  **Analyse et Sélection :** Pour chaque match réel trouvé, identifie le pari qui te semble le plus sûr et le plus probable.
-3.  **Construction du Ticket :** Crée un ticket combiné avec ces ${eventCount} sélections.
-
-**FORMAT DE SORTIE STRICT :**
-Formate ta réponse **exclusivement** en un unique bloc de code JSON valide qui est un objet BetSlip. Ne fournis aucun texte avant ou après.
-
-**Schéma JSON de l'objet BetSlip :**
-\`\`\`
-{
-  "title": "string",
-  "analysis": "string",
-  "bets": [
-    {
-      "event": "string (doit inclure la ligue, ex: 'Real Madrid vs FC Barcelone (La Liga)')",
-      "market": "string",
-      "prediction": "string",
-      "justification": "string"
-    }
-  ]
-}
-\`\`\`
-
-**Exemple de réponse valide :**
-\`\`\`json
-{
-  "title": "Combiné Fiable - ${sport}",
-  "analysis": "Ce combiné se concentre sur des favoris jouant à domicile, minimisant les risques.",
-  "bets": [
-    {
-      "event": "Manchester City vs Burnley (Premier League)",
-      "market": "Vainqueur",
-      "prediction": "Manchester City",
-      "justification": "City est invaincu à domicile et affronte une équipe en difficulté."
-    },
-    {
-      "event": "Bayern Munich vs Bochum (Bundesliga)",
-      "market": "Total de Buts",
-      "prediction": "Plus de 2.5",
-      "justification": "Le Bayern a la meilleure attaque du championnat."
-    }
-  ]
-}
-\`\`\`
-`;
-
+    const prompt = `Utilise Google Search pour trouver ${eventCount} matchs réels de ${sport} ${dateRange}. 
+    Crée un ticket de parieur cohérent. Pour chaque match, donne le marché (ex: Vainqueur, Total buts) et la prédiction.`;
     const response = await ai.models.generateContent({
-        model: 'gemini-2.5-pro',
+        model: 'gemini-3-flash-preview',
         contents: prompt,
-        config: {
-            tools: [{googleSearch: {}}],
+        config: { 
+          tools: [{googleSearch: {}}],
+          responseMimeType: "application/json",
+          responseSchema: BET_SLIP_SCHEMA
         },
     });
-    
-    const jsonString = extractJson(response.text);
-    if (!jsonString) {
-        throw new Error("Impossible d'extraire le JSON de la réponse de l'IA pour le ticket.");
-    }
-    
-    const parsedData = JSON.parse(jsonString);
-
-    if (Array.isArray(parsedData) && parsedData.length > 0) {
-      return parsedData[0] as BetSlip;
-    }
-
-    if (typeof parsedData === 'object' && parsedData !== null && !Array.isArray(parsedData)) {
-      return parsedData as BetSlip;
-    }
-
-    throw new Error("La réponse de l'IA n'est pas un objet de ticket valide.");
+    return JSON.parse(response.text || '{}');
   },
 
   generateMegaBets: async (date: string): Promise<BetSlip[]> => {
-     const prompt = `Agis en tant qu'analyste expert en paris sportifs à la recherche de "méga-paris".
-
-**ACTION REQUISE :**
-1.  **Recherche d'Événements Majeurs :** Utilise l'outil de recherche Google pour identifier les principaux événements sportifs réels (tous sports confondus, en se concentrant sur les ligues majeures) qui se dérouleront à la date du ${date}.
-2.  **Création de Combinés :** Crée TROIS propositions de paris combinés distincts à partir des matchs trouvés. Chaque combiné doit contenir entre 4 et 6 événements.
-3.  **Analyse :** Pour chaque proposition, fournis une analyse globale.
-
-**FORMAT DE SORTIE STRICT :**
-Formate ta réponse **exclusivement** en un unique bloc de code JSON contenant un tableau de trois objets "BetSlip". Ne fournis aucun texte avant ou après.
-
-**Schéma JSON pour chaque objet BetSlip :**
-\`\`\`
-{
-  "title": "string",
-  "analysis": "string",
-  "bets": [
-    {
-      "event": "string (doit inclure la ligue, ex: 'Real Madrid vs FC Barcelone (La Liga)')",
-      "market": "string",
-      "prediction": "string",
-      "justification": "string"
-    }
-  ]
-}
-\`\`\`
-
-**Exemple de réponse valide :**
-\`\`\`json
-[
-  {
-    "title": "Le Combiné des Buteurs",
-    "analysis": "Ce ticket mise sur les matchs où les deux équipes sont susceptibles de marquer.",
-    "bets": [
-      {
-        "event": "Naples vs Inter Milan (Serie A)",
-        "market": "Les deux équipes marquent",
-        "prediction": "Oui",
-        "justification": "Deux des meilleures attaques de Serie A s'affrontent."
-      },
-      {
-        "event": "Dortmund vs Leipzig (Bundesliga)",
-        "market": "Total de Buts",
-        "prediction": "Plus de 3.5",
-        "justification": "Les matchs entre ces deux équipes sont souvent riches en buts."
-      }
-    ]
-  },
-  {
-    "title": "La Surprise du Chef",
-    "analysis": "Un combiné plus risqué qui tente de trouver de la valeur sur des outsiders.",
-    "bets": [
-      {
-        "event": "Lille vs Lyon (Ligue 1)",
-        "market": "Résultat",
-        "prediction": "Match Nul",
-        "justification": "Deux équipes de niveau très proche qui pourraient se neutraliser."
-      },
-      {
-        "event": "Atletico Madrid vs Real Sociedad (La Liga)",
-        "market": "Moins de 2.5 buts",
-        "prediction": "Oui",
-        "justification": "L'Atletico est connu pour sa défense solide, surtout à domicile."
-      }
-    ]
-  }
-]
-\`\`\`
-`;
-
+    const prompt = `Crée 3 combinés de paris (BetSlips) pour les événements sportifs du ${date}. 
+    Chaque combiné doit avoir un thème (ex: "Le Safe", "La Grosse Côte", "Spécial Over/Under").`;
     const response = await ai.models.generateContent({
-        model: 'gemini-2.5-pro',
+        model: 'gemini-3-pro-preview',
         contents: prompt,
-        config: {
-             tools: [{googleSearch: {}}],
+        config: { 
+          tools: [{googleSearch: {}}],
+          responseMimeType: "application/json",
+          responseSchema: {
+            type: Type.ARRAY,
+            items: BET_SLIP_SCHEMA
+          }
         },
     });
-    
-    const jsonString = extractJson(response.text);
-     if (!jsonString) {
-        throw new Error("Impossible d'extraire le JSON de la réponse de l'IA pour les méga-paris.");
-    }
-    
-    const parsedData = JSON.parse(jsonString);
+    return JSON.parse(response.text || '[]');
+  },
 
-    if (Array.isArray(parsedData)) {
-      return parsedData as BetSlip[];
-    }
-
-    if (typeof parsedData === 'object' && parsedData !== null) {
-      return [parsedData] as BetSlip[];
-    }
-
-    throw new Error("La réponse de l'IA n'est pas un tableau de méga-paris valide.");
+  getFirstHalfTimePrediction: async (event: Event): Promise<Prediction[]> => {
+    const prompt = `Focus 1ère Mi-Temps. Match: ${event.teamA.name} vs ${event.teamB.name} (${event.date}). FORMAT : Tableau JSON de Predictions.`;
+    const response = await ai.models.generateContent({
+        model: 'gemini-3-flash-preview',
+        contents: prompt,
+        config: { 
+          tools: [{googleSearch: {}}],
+          responseMimeType: "application/json",
+          responseSchema: PREDICTION_SCHEMA
+        },
+    });
+    return JSON.parse(response.text || '[]');
   },
   
   getAiRecommendation: async (): Promise<BetSlip[]> => {
-    const prompt = `Agis en tant qu'expert et analyste de paris sportifs de classe mondiale. Ta mission est de fournir tes meilleures recommandations de paris combinés, sans te limiter à une date ou un sport spécifique.
-
-**ACTION REQUISE :**
-1.  **Recherche Globale :** Utilise l'outil de recherche Google pour scanner les événements sportifs à venir (dans les prochains jours) sur plusieurs sports majeurs (Football, Basketball, NFL, etc.).
-2.  **Identification des "Pépites" :** Identifie 1 à 3 paris combinés qui présentent le meilleur ratio sécurité/potentiel de gain. Ces choix doivent être basés sur une analyse profonde et des données vérifiables. Ce sont TES recommandations personnelles en tant qu'expert.
-3.  **Justification :** Chaque combiné doit avoir une analyse claire expliquant la stratégie (ex: "Combiné des favoris solides", "Pari sur les matchs à buts", etc.). Chaque pari individuel doit être justifié.
-
-**FORMAT DE SORTIE STRICT :**
-Formate ta réponse **exclusivement** en un unique bloc de code JSON contenant un tableau d'objets "BetSlip". Ne fournis aucun texte avant ou après.
-
-**Schéma JSON pour chaque objet BetSlip :**
-\`\`\`
-{
-  "title": "string",
-  "analysis": "string",
-  "bets": [
-    {
-      "event": "string (doit inclure la ligue, ex: 'Real Madrid vs FC Barcelone (La Liga)')",
-      "market": "string",
-      "prediction": "string",
-      "justification": "string"
-    }
-  ]
-}
-\`\`\`
-
-**Exemple de réponse valide :**
-\`\`\`json
-[
-  {
-    "title": "La Recommandation de Confiance de l'IA",
-    "analysis": "Ce combiné est basé sur des équipes en grande forme qui affrontent des adversaires plus faibles, maximisant les chances de succès.",
-    "bets": [
-      {
-        "event": "Boston Celtics vs Detroit Pistons (NBA)",
-        "market": "Écart de points",
-        "prediction": "Boston Celtics -8.5",
-        "justification": "Les Celtics dominent la conférence Est tandis que les Pistons sont en phase de reconstruction."
-      },
-      {
-        "event": "Arsenal vs Sheffield United (Premier League)",
-        "market": "Vainqueur",
-        "prediction": "Arsenal",
-        "justification": "Arsenal est un prétendant au titre et joue à domicile contre le dernier du classement."
-      }
-    ]
-  }
-]
-\`\`\`
-`;
     const response = await ai.models.generateContent({
-        model: 'gemini-2.5-pro',
+        model: 'gemini-3-flash-preview',
+        contents: "Quels sont les paris les plus sûrs aujourd'hui ? Génère 2 tickets recommandés.",
+        config: { 
+          tools: [{googleSearch: {}}],
+          responseMimeType: "application/json",
+          responseSchema: {
+            type: Type.ARRAY,
+            items: BET_SLIP_SCHEMA
+          }
+        },
+    });
+    return JSON.parse(response.text || '[]');
+  },
+
+  getGoalscorerPredictions: async (date: string, sport: 'football' | 'hockey'): Promise<GoalscorerPrediction[]> => {
+    const prompt = `Top 5 buteurs le ${date}. FORMAT : Tableau JSON GoalscorerPrediction.`;
+    const response = await ai.models.generateContent({
+        model: 'gemini-3-flash-preview',
+        contents: prompt,
+        config: { 
+          tools: [{googleSearch: {}}],
+          responseMimeType: "application/json",
+          responseSchema: {
+            type: Type.ARRAY,
+            items: {
+              type: Type.OBJECT,
+              properties: {
+                playerName: { type: Type.STRING },
+                teamName: { type: Type.STRING },
+                match: { type: Type.STRING },
+                league: { type: Type.STRING },
+                confidence: { type: Type.STRING },
+                justification: { type: Type.STRING }
+              },
+              required: ["playerName", "match", "justification"]
+            }
+          }
+        },
+    });
+    return JSON.parse(response.text || '[]');
+  },
+
+  getNbaDigitPrediction: async (date: string): Promise<NbaDigitResult> => {
+    const prompt = `Tu es un expert en probabilités numériques NBA. Analyse CHAQUE MATCH de la nuit du ${date}.
+    1. Utilise Google Search pour lister tous les matchs NBA du ${date}.
+    2. Pour CHAQUE MATCH, analyse la fréquence d'apparition des chiffres (0-9) dans les scores récents.
+    FORMAT : JSON STRICT.`;
+
+    const response = await ai.models.generateContent({
+        model: 'gemini-3-flash-preview',
         contents: prompt,
         config: {
              tools: [{googleSearch: {}}],
-        },
+             responseMimeType: "application/json",
+             responseSchema: {
+                type: Type.OBJECT,
+                properties: {
+                    date: { type: Type.STRING },
+                    globalTrend: { type: Type.STRING },
+                    predictions: {
+                        type: Type.ARRAY,
+                        items: {
+                            type: Type.OBJECT,
+                            properties: {
+                                match: { type: Type.STRING },
+                                homeTeam: { type: Type.STRING },
+                                awayTeam: { type: Type.STRING },
+                                predictedDigit: { type: Type.STRING },
+                                predictedTotalScore: { type: Type.STRING },
+                                confidence: { type: Type.STRING },
+                                reasoning: { type: Type.STRING },
+                                recentScores: { type: Type.ARRAY, items: { type: Type.STRING } }
+                            },
+                            required: ["match", "homeTeam", "awayTeam", "predictedDigit", "predictedTotalScore", "confidence", "reasoning"]
+                        }
+                    }
+                },
+                required: ["date", "predictions"]
+             }
+        }
     });
-    
-    const jsonString = extractJson(response.text);
-     if (!jsonString) {
-        throw new Error("Impossible d'extraire le JSON de la réponse de l'IA pour les recommandations.");
-    }
-    
-    const parsedData = JSON.parse(jsonString);
-
-    if (Array.isArray(parsedData)) {
-      return parsedData as BetSlip[];
-    }
-
-    if (typeof parsedData === 'object' && parsedData !== null) {
-      return [parsedData] as BetSlip[];
-    }
-
-    throw new Error("La réponse de l'IA n'est pas un tableau de recommandations valide.");
+    return JSON.parse(response.text || '{}');
   }
 };

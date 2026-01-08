@@ -5,6 +5,7 @@ const sports: Sport[] = [
   { id: 'basketball', name: 'Basketball' },
   { id: 'tennis', name: 'Tennis' },
   { id: 'esports', name: 'E-Sports' },
+  { id: 'nhl', name: 'NHL' },
 ];
 
 export const sportsDataService = {

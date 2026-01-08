@@ -1,3 +1,4 @@
+
 import React, { useState, useEffect } from 'react';
 import { sportsDataService } from '../services/sportsDataService';
 import { geminiService } from '../services/geminiService';
@@ -5,9 +6,13 @@ import { Sport, Team, Event, Prediction } from '../types';
 import Loader from './Loader';
 import PredictionCard from './PredictionCard';
 
-const SingleEventAnalysis: React.FC = () => {
+interface SingleEventAnalysisProps {
+  defaultSportId?: string;
+}
+
+const SingleEventAnalysis: React.FC<SingleEventAnalysisProps> = ({ defaultSportId }) => {
   const [sports, setSports] = useState<Sport[]>([]);
-  const [selectedSport, setSelectedSport] = useState<string>('');
+  const [selectedSport, setSelectedSport] = useState<string>(defaultSportId || '');
   const [selectedDate, setSelectedDate] = useState<string>(new Date().toISOString().split('T')[0]);
   const [teamA, setTeamA] = useState<string>('');
   const [teamB, setTeamB] = useState<string>('');
@@ -18,6 +23,10 @@ const SingleEventAnalysis: React.FC = () => {
   useEffect(() => {
     sportsDataService.getSports().then(setSports);
   }, []);
+
+  useEffect(() => {
+    if (defaultSportId) setSelectedSport(defaultSportId);
+  }, [defaultSportId]);
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -54,38 +63,38 @@ const SingleEventAnalysis: React.FC = () => {
 
   return (
     <div className="space-y-8">
-      <form onSubmit={handleSubmit} className="bg-brand-secondary p-6 rounded-lg shadow-lg grid grid-cols-1 md:grid-cols-2 lg:grid-cols-5 gap-4 items-end">
+      <form onSubmit={handleSubmit} className="bg-brand-secondary p-6 rounded-lg shadow-lg grid grid-cols-1 md:grid-cols-2 lg:grid-cols-5 gap-4 items-end border border-gray-700">
         <div className="lg:col-span-1">
-          <label htmlFor="sport" className="block text-sm font-medium text-gray-300 mb-1">Sport</label>
+          <label htmlFor="sport" className="block text-xs font-bold text-gray-500 uppercase mb-1 ml-1">Sport</label>
           <select id="sport" value={selectedSport} onChange={e => setSelectedSport(e.target.value)} className="w-full bg-brand-dark border-gray-600 text-white rounded-md p-2 focus:ring-brand-accent focus:border-brand-accent">
             <option value="">Sélectionner...</option>
             {sports.map(s => <option key={s.id} value={s.id}>{s.name}</option>)}
           </select>
         </div>
         <div className="lg:col-span-1">
-          <label htmlFor="date" className="block text-sm font-medium text-gray-300 mb-1">Date</label>
+          <label htmlFor="date" className="block text-xs font-bold text-gray-500 uppercase mb-1 ml-1">Date</label>
           <input type="date" id="date" value={selectedDate} onChange={e => setSelectedDate(e.target.value)} className="w-full bg-brand-dark border-gray-600 text-white rounded-md p-2 focus:ring-brand-accent focus:border-brand-accent" />
         </div>
         <div className="lg:col-span-1">
-          <label htmlFor="teamA" className="block text-sm font-medium text-gray-300 mb-1">Équipe A</label>
-           <input type="text" id="teamA" value={teamA} onChange={e => setTeamA(e.target.value)} disabled={!selectedSport} placeholder="Saisir l'équipe A" className="w-full bg-brand-dark border-gray-600 text-white rounded-md p-2 focus:ring-brand-accent focus:border-brand-accent disabled:opacity-50" />
+          <label htmlFor="teamA" className="block text-xs font-bold text-gray-500 uppercase mb-1 ml-1">Équipe A</label>
+           <input type="text" id="teamA" value={teamA} onChange={e => setTeamA(e.target.value)} disabled={!selectedSport} placeholder="Ex: PSG" className="w-full bg-brand-dark border-gray-600 text-white rounded-md p-2 focus:ring-brand-accent focus:border-brand-accent disabled:opacity-50" />
         </div>
         <div className="lg:col-span-1">
-          <label htmlFor="teamB" className="block text-sm font-medium text-gray-300 mb-1">Équipe B</label>
-           <input type="text" id="teamB" value={teamB} onChange={e => setTeamB(e.target.value)} disabled={!selectedSport} placeholder="Saisir l'équipe B" className="w-full bg-brand-dark border-gray-600 text-white rounded-md p-2 focus:ring-brand-accent focus:border-brand-accent disabled:opacity-50" />
+          <label htmlFor="teamB" className="block text-xs font-bold text-gray-500 uppercase mb-1 ml-1">Équipe B</label>
+           <input type="text" id="teamB" value={teamB} onChange={e => setTeamB(e.target.value)} disabled={!selectedSport} placeholder="Ex: Marseille" className="w-full bg-brand-dark border-gray-600 text-white rounded-md p-2 focus:ring-brand-accent focus:border-brand-accent disabled:opacity-50" />
         </div>
-        <button type="submit" disabled={isLoading} className="lg:col-span-1 w-full bg-brand-accent hover:bg-brand-accent-hover text-white font-bold py-2 px-4 rounded-md transition-colors disabled:bg-gray-500">
-          {isLoading ? 'Analyse...' : 'Lancer l\'Analyse'}
+        <button type="submit" disabled={isLoading} className="lg:col-span-1 w-full bg-brand-accent hover:bg-brand-accent-hover text-white font-black py-2.5 px-4 rounded-md transition-all transform hover:scale-[1.02] active:scale-95 disabled:bg-gray-500">
+          {isLoading ? 'ANALYSE...' : 'LANCER'}
         </button>
       </form>
 
-      {error && <div className="bg-red-500/20 text-red-300 p-3 rounded-md text-center">{error}</div>}
+      {error && <div className="bg-red-500/10 border border-red-500/30 text-red-400 p-3 rounded-md text-center font-bold">{error}</div>}
       
       {isLoading && <Loader />}
 
       {predictions && (
-        <div>
-          <h2 className="text-2xl font-bold mb-4 text-center">Résultats de l'Analyse</h2>
+        <div className="animate-fade-in-up">
+          <h2 className="text-2xl font-black mb-6 text-center uppercase tracking-tight">Pronostics <span className="text-brand-accent">Match</span></h2>
           <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
             {predictions.map((p, i) => <PredictionCard key={i} prediction={p} />)}
           </div>
