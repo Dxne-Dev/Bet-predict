@@ -1,5 +1,5 @@
 
-import React, { useState } from 'react';
+import React, { useState, useRef } from 'react';
 import { geminiService } from '../services/geminiService';
 import { Sport } from '../types';
 import Loader from './Loader';
@@ -12,8 +12,10 @@ interface BestChoiceAnalystProps {
 const BestChoiceAnalyst: React.FC<BestChoiceAnalystProps> = ({ sport, onBack }) => {
   const [selectedDate, setSelectedDate] = useState<string>(new Date().toISOString().split('T')[0]);
   const [isLoading, setIsLoading] = useState<boolean>(false);
+  const [isExporting, setIsExporting] = useState<boolean>(false);
   const [error, setError] = useState<string>('');
   const [analysis, setAnalysis] = useState<{intro: string, recommendations: any[], conclusion: string} | null>(null);
+  const reportRef = useRef<HTMLDivElement>(null);
 
   const isFootball = sport.id === 'football';
 
@@ -35,6 +37,33 @@ const BestChoiceAnalyst: React.FC<BestChoiceAnalystProps> = ({ sport, onBack }) 
       console.error(err);
     } finally {
       setIsLoading(false);
+    }
+  };
+
+  const handleExportPdf = async () => {
+    if (!reportRef.current) return;
+    setIsExporting(true);
+    try {
+      const element = reportRef.current;
+      const canvas = await (window as any).html2canvas(element, {
+        scale: 2,
+        useCORS: true,
+        backgroundColor: '#111827',
+        logging: false,
+      });
+      const imgData = canvas.toDataURL('image/png');
+      const { jsPDF } = (window as any).jspdf;
+      const pdf = new jsPDF('p', 'mm', 'a4');
+      const imgProps = pdf.getImageProperties(imgData);
+      const pdfWidth = pdf.internal.pageSize.getWidth();
+      const pdfHeight = (imgProps.height * pdfWidth) / imgProps.width;
+      
+      pdf.addImage(imgData, 'PNG', 0, 0, pdfWidth, pdfHeight);
+      pdf.save(`Analyse_${sport.name}_${selectedDate}.pdf`);
+    } catch (err) {
+      console.error("Erreur lors de l'export PDF:", err);
+    } finally {
+      setIsExporting(false);
     }
   };
 
@@ -60,26 +89,36 @@ const BestChoiceAnalyst: React.FC<BestChoiceAnalystProps> = ({ sport, onBack }) 
           </div>
         </div>
 
-        <form onSubmit={handleRunAnalysis} className="flex gap-3 bg-brand-dark/50 p-2 rounded-2xl border border-gray-800">
-          <input 
-            type="date" 
-            value={selectedDate} 
-            onChange={(e) => setSelectedDate(e.target.value)}
-            className="bg-transparent text-white rounded-xl px-4 py-2 text-sm focus:ring-0 outline-none font-bold"
-          />
-          <button 
-            type="submit" 
-            disabled={isLoading}
-            className="bg-brand-accent hover:bg-brand-accent-hover text-white px-8 py-2.5 rounded-xl text-xs font-black transition-all flex items-center gap-2 shadow-lg shadow-brand-accent/20"
-          >
-            {isLoading ? (
-                <svg className="animate-spin h-4 w-4 text-white" viewBox="0 0 24 24">
-                    <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle>
-                    <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
-                </svg>
-            ) : 'SCANNER'}
-          </button>
-        </form>
+        <div className="flex flex-col sm:flex-row gap-3">
+          <form onSubmit={handleRunAnalysis} className="flex gap-3 bg-brand-dark/50 p-2 rounded-2xl border border-gray-800">
+            <input 
+              type="date" 
+              value={selectedDate} 
+              onChange={(e) => setSelectedDate(e.target.value)}
+              className="bg-transparent text-white rounded-xl px-4 py-2 text-sm focus:ring-0 outline-none font-bold"
+            />
+            <button 
+              type="submit" 
+              disabled={isLoading}
+              className="bg-brand-accent hover:bg-brand-accent-hover text-white px-8 py-2.5 rounded-xl text-xs font-black transition-all flex items-center gap-2 shadow-lg shadow-brand-accent/20"
+            >
+              {isLoading ? 'SCAN...' : 'SCANNER'}
+            </button>
+          </form>
+
+          {analysis && (
+            <button
+              onClick={handleExportPdf}
+              disabled={isExporting}
+              className="flex items-center gap-2 bg-white/5 hover:bg-white/10 text-white border border-white/10 px-6 py-3 rounded-2xl text-xs font-black transition-all"
+            >
+              <svg xmlns="http://www.w3.org/2000/svg" className="h-4 w-4 text-brand-accent" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 10v6m0 0l-3-3m3 3l3-3m2 8H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
+              </svg>
+              {isExporting ? 'EXPORT...' : 'PDF'}
+            </button>
+          )}
+        </div>
       </div>
 
       {isLoading && <Loader text={`L'Agent analyse les ${isFootball ? 'corners, l\'arbitrage et les tendances' : 'statistiques avancées de performance'}...`} />}
@@ -94,7 +133,7 @@ const BestChoiceAnalyst: React.FC<BestChoiceAnalystProps> = ({ sport, onBack }) 
       )}
 
       {analysis && (
-        <div className="space-y-10 animate-fade-in-up">
+        <div ref={reportRef} className="space-y-10 animate-fade-in-up p-4 sm:p-0">
           {/* Intelligence Intro */}
           <div className="bg-gradient-to-r from-blue-600/20 to-transparent border-l-4 border-blue-500 p-8 rounded-2xl relative overflow-hidden">
              <div className="absolute top-0 right-0 p-4 opacity-10">
@@ -102,7 +141,7 @@ const BestChoiceAnalyst: React.FC<BestChoiceAnalystProps> = ({ sport, onBack }) 
                     <path d="M12 2C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2zm1 15h-2v-6h2v6zm0-8h-2V7h2v2z"/>
                 </svg>
              </div>
-             <h4 className="text-blue-400 text-[10px] font-black uppercase tracking-widest mb-3">Rapport Analytique Global</h4>
+             <h4 className="text-blue-400 text-[10px] font-black uppercase tracking-widest mb-3">Rapport Analytique Global - {selectedDate}</h4>
              <p className="text-blue-100 text-lg leading-relaxed font-medium">
                {analysis.intro}
              </p>
