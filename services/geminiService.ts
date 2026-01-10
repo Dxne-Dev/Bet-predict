@@ -49,17 +49,33 @@ const GOALSCORER_ARRAY_SCHEMA = {
 
 export const geminiService = {
   getBestChoiceAnalysis: async (sport: string, date: string): Promise<{intro: string, recommendations: any[], conclusion: string}> => {
-    const isFootball = sport.toLowerCase().includes('foot');
+    // Contexte d'analyse universel Pro++ avec pondération granulaire stricte
+    const specializedContext = `
+    ### MISSION ANALYSTE SPORTIF PRO++ - PRÉCISION ABSOLUE ###
+    Sport : ${sport}. Date : ${date}.
     
-    const specializedContext = isFootball ? `
-    ### MISSION ANALYSTE FOOTBALL PRO++ ###
-    Analyse les matchs du ${date}. 
-    FOCUS OBLIGATOIRE SUR : Corners (Over/Under), Cartons (Jaunes/Rouges), Stats tirs cadrés et scores multichances.
-    Utilise Google Search pour les compos et l'arbitre.` : 
-    `ANALYSE SPORTIVE EXPERTE : Focus sur les handicaps et performances individuelles.`;
+    CRITÈRES DE SÉLECTION (Value Detection) :
+    Cherche des "COMBINÉS COMPLEXES" (Triptyques ou Duos de statistiques).
+    - Football : Résultat + Corners (>10.5) + Cartons (>4.5) ou Buts par mi-temps.
+    - Basketball : Résultat + Handicap + Points par Quart-temps.
+    - Tennis : Résultat + Nombre de Sets + Tie-break probable.
+    - Hockey : Résultat + Tirs cadrés + Powerplays.
+    
+    LOGIQUE DE CALCUL DE CONFIANCE (Pondération 70% sur facteurs granulaires) :
+    Ton score de confiance (0-100) doit impérativement privilégier :
+    1. STATS DE NICHE : Moyennes spécifiques (ex: corners concédés par l'adversaire, fautes commises).
+    2. FACTEUR HUMAIN/OFFICIEL : Analyse de l'arbitre (sévérité pour les cartons/fautes) ou juge de chaise.
+    3. SCÉNARIO TEMPOREL : Analyse par période/mi-temps/set.
+    
+    Si une recommandation n'inclut pas de justification basée sur ces 3 points, son score de confiance doit être bas.
+    
+    STRUCTURE DE RÉPONSE :
+    Le champ "choice" doit refléter ces combinaisons (ex: "V1 & +11 Corners & +5 Cartons").
+    Le champ "reasoning" doit détailler l'analyse de l'arbitre et les stats de niche utilisées.
+    `;
 
-    const prompt = `Agent Décisionnel ${sport}. Date cible: ${date}. ${specializedContext}
-    Formatte ta réponse en JSON STRICT selon le schéma de recommandation.`;
+    const prompt = `${specializedContext}
+    Formatte ta réponse en JSON STRICT selon le schéma de recommandation. Utilise Google Search pour vérifier les officiels du match et les tendances de niche.`;
 
     const response = await ai.models.generateContent({
         model: 'gemini-3-flash-preview',
@@ -77,12 +93,12 @@ export const geminiService = {
                             type: Type.OBJECT,
                             properties: {
                                 match: { type: Type.STRING },
-                                market: { type: Type.STRING },
-                                choice: { type: Type.STRING },
-                                confidence: { type: Type.NUMBER },
-                                reasoning: { type: Type.STRING }
+                                market: { type: Type.STRING, description: "Type de combiné (ex: Triptyque Analytique)" },
+                                choice: { type: Type.STRING, description: "La combinaison précise (ex: V1 & +10.5 Corners & +4.5 Cartons)" },
+                                confidence: { type: Type.NUMBER, description: "Score sur 100 basé sur les stats granulaires" },
+                                reasoning: { type: Type.STRING, description: "Justification incluant l'arbitre et les stats de niche" }
                             },
-                            required: ["match", "market", "choice", "reasoning"]
+                            required: ["match", "market", "choice", "confidence", "reasoning"]
                         }
                     },
                     conclusion: { type: Type.STRING }
@@ -98,19 +114,12 @@ export const geminiService = {
     const today = new Date().toISOString().split('T')[0];
     const prompt = `### AUDIT POST-MATCH CRITIQUE ###
     Aujourd'hui nous sommes le : ${today}
-    Match à vérifier : ${entry.label} (Date prévue : ${entry.timestamp ? new Date(entry.timestamp).toISOString().split('T')[0] : 'Inconnue'})
+    Match à vérifier : ${entry.label}
     Pronostics faits par l'IA : ${JSON.stringify(entry.data)}
-    
-    MISSION DE VÉRIFICATION :
-    1. Si le match est prévu APRÈS le ${today}, réponds impérativement que le match n'a pas encore eu lieu. isSuccess doit être NULL.
-    2. Ne compare JAMAIS avec des matchs passés (ex: 2024) pour valider une date future (ex: 2026).
-    3. Si le match a été joué, trouve les scores et stats exactes.
-    4. SI LE MATCH N'A PAS EU LIEU OU SI LES DONNÉES SONT INCERTAINES, isSuccess DOIT ÊTRE null (ET NON PAS false).
-    5. Un échec (false) ne doit être attribué QUE si le match a eu lieu et que le pronostic est faux.
     
     SCHEMA JSON :
     {
-      "actualResults": "Résumé factuel (Match non joué / Score X-X)",
+      "actualResults": "Résumé factuel (Score, Corners, Cartons)",
       "comparison": "Analyse du pronostic vs reality",
       "isSuccess": boolean | null
     }`;
@@ -168,7 +177,7 @@ export const geminiService = {
   },
 
   generateMegaBets: async (date: string): Promise<BetSlip[]> => {
-    const prompt = `Génère 3 tickets combinés distincts (1 Safe, 1 Risqué, 1 Spéculatif) pour les matchs du ${date}. Utilise Google Search pour trouver les meilleures affiches du jour. Formate en tableau JSON selon le schéma.`;
+    const prompt = `Génère 3 tickets combinés distincts (1 Safe, 1 Risqué, 1 Spéculatif) pour les matchs du ${date}. Utilise Google Search. JSON.`;
     const response = await ai.models.generateContent({
         model: 'gemini-3-flash-preview',
         contents: prompt,
@@ -184,12 +193,8 @@ export const geminiService = {
   getGoalscorerPredictions: async (date: string, sport: 'football' | 'hockey'): Promise<GoalscorerPrediction[]> => {
     const prompt = `### MISSION CHASSEUR DE BUTEURS ###
     Date : ${date}
-    Sport : ${sport === 'football' ? 'Football (Championnats Européens)' : 'Hockey sur Glace (NHL)'}
-    
-    1. Utilise Google Search pour identifier les matchs réels prévus le ${date}.
-    2. Trouve 5 joueurs (Buteurs) ayant une probabilité maximale de marquer selon leur forme récente et l'adversaire.
-    3. NE LAISSE AUCUN CHAMP VIDE.
-    4. Formate impérativement en JSON selon le schéma strict fourni.`;
+    Sport : ${sport === 'football' ? 'Football' : 'Hockey'}
+    JSON. Google Search.`;
 
     const response = await ai.models.generateContent({
         model: 'gemini-3-flash-preview',
@@ -217,7 +222,7 @@ export const geminiService = {
   },
 
   getAiRecommendation: async (): Promise<BetSlip[]> => {
-    const prompt = `Analyse toutes les opportunités sportives actuelles dans le monde. Génère 3 tickets combinés hautement rentables basés sur des statistiques réelles. Google Search requis. Formate en tableau JSON selon le schéma.`;
+    const prompt = `Analyse toutes les opportunités sportives actuelles. 3 tickets combinés. Google Search. JSON.`;
     const response = await ai.models.generateContent({
         model: 'gemini-3-flash-preview',
         contents: prompt,
