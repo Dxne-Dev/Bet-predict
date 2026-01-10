@@ -2,6 +2,7 @@
 import React, { useState, useEffect } from 'react';
 import { sportsDataService } from '../services/sportsDataService';
 import { geminiService } from '../services/geminiService';
+import { databaseService } from '../services/databaseService';
 import { Sport, Team, Event, Prediction } from '../types';
 import Loader from './Loader';
 import PredictionCard from './PredictionCard';
@@ -38,9 +39,10 @@ const SingleEventAnalysis: React.FC<SingleEventAnalysisProps> = ({ defaultSportI
     setIsLoading(true);
     setPredictions(null);
 
+    const sportName = sports.find(s => s.id === selectedSport)?.name || '';
     const event: Event = {
       id: 'single-event',
-      sport: sports.find(s => s.id === selectedSport)?.name || '',
+      sport: sportName,
       date: selectedDate,
       teamA: { id: teamA.trim().toLowerCase(), name: teamA.trim() },
       teamB: { id: teamB.trim().toLowerCase(), name: teamB.trim() },
@@ -49,12 +51,19 @@ const SingleEventAnalysis: React.FC<SingleEventAnalysisProps> = ({ defaultSportI
     try {
       const result = await geminiService.getSingleEventPrediction(event);
       if (result.length === 0) {
-        setError("Aucun match trouvé pour les équipes et la date sélectionnées. Veuillez vérifier les informations.");
+        setError("Aucun match trouvé. Veuillez vérifier les informations.");
       } else {
         setPredictions(result);
+        databaseService.saveEntry({
+          sport: sportName,
+          mode: 'pro',
+          type: 'single',
+          label: `${teamA} vs ${teamB} (${selectedDate})`,
+          data: result
+        });
       }
     } catch (err) {
-      setError("Une erreur est survenue lors de l'analyse. Veuillez réessayer.");
+      setError("Une erreur est survenue lors de l'analyse.");
       console.error(err);
     } finally {
       setIsLoading(false);
@@ -83,7 +92,7 @@ const SingleEventAnalysis: React.FC<SingleEventAnalysisProps> = ({ defaultSportI
           <label htmlFor="teamB" className="block text-xs font-bold text-gray-500 uppercase mb-1 ml-1">Équipe B</label>
            <input type="text" id="teamB" value={teamB} onChange={e => setTeamB(e.target.value)} disabled={!selectedSport} placeholder="Ex: Marseille" className="w-full bg-brand-dark border-gray-600 text-white rounded-md p-2 focus:ring-brand-accent focus:border-brand-accent disabled:opacity-50" />
         </div>
-        <button type="submit" disabled={isLoading} className="lg:col-span-1 w-full bg-brand-accent hover:bg-brand-accent-hover text-white font-black py-2.5 px-4 rounded-md transition-all transform hover:scale-[1.02] active:scale-95 disabled:bg-gray-500">
+        <button type="submit" disabled={isLoading} className="lg:col-span-1 w-full bg-brand-accent hover:bg-brand-accent-hover text-white font-black py-2.5 px-4 rounded-md transition-all">
           {isLoading ? 'ANALYSE...' : 'LANCER'}
         </button>
       </form>

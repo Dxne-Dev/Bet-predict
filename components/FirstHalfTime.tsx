@@ -1,6 +1,7 @@
 
 import React, { useState } from 'react';
 import { geminiService } from '../services/geminiService';
+import { databaseService } from '../services/databaseService';
 import { Event, Prediction } from '../types';
 import Loader from './Loader';
 import PredictionCard from './PredictionCard';
@@ -25,7 +26,7 @@ const FirstHalfTime: React.FC = () => {
 
     const event: Event = {
       id: 'first-half-event',
-      sport: 'Football', // Hardcoded as this section is only for football
+      sport: 'Football',
       date: selectedDate,
       teamA: { id: teamA.trim().toLowerCase(), name: teamA.trim() },
       teamB: { id: teamB.trim().toLowerCase(), name: teamB.trim() },
@@ -34,12 +35,19 @@ const FirstHalfTime: React.FC = () => {
     try {
       const result = await geminiService.getFirstHalfTimePrediction(event);
       if (result.length === 0) {
-        setError("Aucun match trouvé pour les équipes et la date sélectionnées, ou pas de prédictions pertinentes pour la 1ère mi-temps. Veuillez vérifier les informations.");
+        setError("Aucun match trouvé ou pas de prédictions pertinentes.");
       } else {
         setPredictions(result);
+        databaseService.saveEntry({
+          sport: 'Football',
+          mode: 'pro',
+          type: 'first_half',
+          label: `1ère MT: ${teamA} vs ${teamB}`,
+          data: result
+        });
       }
     } catch (err) {
-      setError("Une erreur est survenue lors de l'analyse. Veuillez réessayer.");
+      setError("Une erreur est survenue lors de l'analyse.");
       console.error(err);
     } finally {
       setIsLoading(false);
@@ -50,7 +58,7 @@ const FirstHalfTime: React.FC = () => {
     <div className="space-y-8">
        <div className="text-center p-4 bg-brand-secondary/30 rounded-lg">
         <h2 className="text-2xl font-bold text-brand-light">Analyse 1ère Mi-temps - Football</h2>
-        <p className="text-gray-400 mt-1">Obtenez des pronostics ciblés exclusivement sur la première période des matchs de football.</p>
+        <p className="text-gray-400 mt-1">Obtenez des pronostics ciblés exclusivement sur la première période.</p>
        </div>
       <form onSubmit={handleSubmit} className="bg-brand-secondary p-6 rounded-lg shadow-lg grid grid-cols-1 md:grid-cols-4 gap-4 items-end">
         <div className="lg:col-span-1">

@@ -37,48 +37,59 @@ const BetSlip: React.FC<BetSlipProps> = ({ slip }) => {
     }
   };
 
+  const hasBets = slip.bets && Array.isArray(slip.bets) && slip.bets.length > 0;
+
   return (
     <div className="relative group w-full">
-      <div ref={slipRef} className="bg-brand-secondary border border-gray-700 rounded-xl overflow-hidden shadow-2xl w-full">
-        <div className="p-4 bg-gray-800/50 flex justify-between items-start">
-          <div>
-            <h3 className="font-bold text-xl text-brand-accent uppercase tracking-tighter">{slip.title}</h3>
-            {slip.analysis && <p className="text-xs text-gray-400 mt-1 italic">{slip.analysis}</p>}
+      <div ref={slipRef} className="bg-brand-secondary border border-gray-700 rounded-xl overflow-hidden shadow-2xl w-full flex flex-col min-h-[200px]">
+        <div className="p-4 bg-gray-800/50 flex justify-between items-start border-b border-gray-700">
+          <div className="flex-1 mr-4">
+            <h3 className="font-bold text-xl text-brand-accent uppercase tracking-tighter leading-tight">{slip.title || "Ticket sans titre"}</h3>
+            {slip.analysis && <p className="text-[10px] text-gray-400 mt-1 italic leading-tight">{slip.analysis}</p>}
           </div>
-          <div className="h-8 w-8 bg-brand-accent/10 rounded flex items-center justify-center">
+          <div className="h-8 w-8 bg-brand-accent/10 rounded flex items-center justify-center flex-shrink-0">
              <svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5 text-brand-accent" viewBox="0 0 20 20" fill="currentColor">
                 <path d="M9 2a1 1 0 000 2h2a1 1 0 100-2H9z" />
                 <path fillRule="evenodd" d="M4 5a2 2 0 012-2 3 3 0 003 3h2a3 3 0 003-3 2 2 0 012 2v11a2 2 0 01-2 2H6a2 2 0 01-2-2V5zm3 4a1 1 0 000 2h.01a1 1 0 100-2H7zm3 0a1 1 0 000 2h3a1 1 0 100-2h-3zm-3 4a1 1 0 100 2h.01a1 1 0 100-2H7zm3 0a1 1 0 100 2h3a1 1 0 100-2h-3z" clipRule="evenodd" />
              </svg>
           </div>
         </div>
-        <div className="p-4 flex flex-col gap-3">
-          {slip.bets && Array.isArray(slip.bets) && slip.bets.map((bet, index) => (
-            <div key={index} className="bg-brand-dark/50 p-3 rounded-lg border-l-4 border-brand-accent">
-              <p className="font-black text-xs text-gray-500 uppercase tracking-widest mb-1">{bet.event}</p>
-              <p className="text-brand-light font-bold text-sm">
-                <span className="text-gray-400 font-normal">{bet.market}:</span> {bet.prediction}
-              </p>
-              {bet.justification && <p className="text-[10px] text-gray-500 mt-1 italic leading-tight">"{bet.justification}"</p>}
+        
+        <div className="p-4 flex flex-col gap-3 flex-grow">
+          {hasBets ? (
+            slip.bets.map((bet, index) => (
+              <div key={index} className="bg-brand-dark/50 p-3 rounded-lg border-l-4 border-brand-accent animate-fade-in-up" style={{ animationDelay: `${index * 100}ms` }}>
+                <p className="font-black text-[10px] text-gray-500 uppercase tracking-widest mb-1">{bet.event || "Match inconnu"}</p>
+                <p className="text-brand-light font-bold text-sm">
+                  <span className="text-gray-400 font-normal">{bet.market || "Pari"}:</span> {bet.prediction || "N/A"}
+                </p>
+                {bet.justification && <p className="text-[10px] text-gray-500 mt-1 italic leading-tight opacity-75">"{bet.justification}"</p>}
+              </div>
+            ))
+          ) : (
+            <div className="flex-grow flex items-center justify-center p-8 text-center">
+              <p className="text-xs text-gray-500 font-bold uppercase tracking-widest">Aucune donnée de pari générée</p>
             </div>
-          ))}
+          )}
         </div>
+        
         <div className="p-3 bg-brand-dark/30 text-center border-t border-gray-800">
            <span className="text-[10px] font-bold text-gray-600 uppercase tracking-[0.2em]">Pronostics IA Certifiés</span>
         </div>
       </div>
       
-      {/* Action Button - Floating on Hover */}
-      <button
-        onClick={handleExportPdf}
-        disabled={isExporting}
-        className="absolute top-2 right-2 opacity-0 group-hover:opacity-100 transition-opacity bg-brand-accent hover:bg-brand-accent-hover text-white p-2 rounded-lg shadow-xl"
-        title="Exporter en PDF"
-      >
-        <svg xmlns="http://www.w3.org/2000/svg" className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 10v6m0 0l-3-3m3 3l3-3m2 8H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
-        </svg>
-      </button>
+      {hasBets && (
+        <button
+          onClick={handleExportPdf}
+          disabled={isExporting}
+          className="absolute top-2 right-2 opacity-0 group-hover:opacity-100 transition-opacity bg-brand-accent hover:bg-brand-accent-hover text-white p-2 rounded-lg shadow-xl"
+          title="Exporter en PDF"
+        >
+          <svg xmlns="http://www.w3.org/2000/svg" className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 10v6m0 0l-3-3m3 3l3-3m2 8H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
+          </svg>
+        </button>
+      )}
     </div>
   );
 };

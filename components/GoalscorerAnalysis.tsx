@@ -1,6 +1,7 @@
 
 import React, { useState, useEffect } from 'react';
 import { geminiService } from '../services/geminiService';
+import { databaseService } from '../services/databaseService';
 import { GoalscorerPrediction } from '../types';
 import Loader from './Loader';
 import GoalscorerCard from './GoalscorerCard';
@@ -30,23 +31,35 @@ const GoalscorerAnalysis: React.FC<GoalscorerAnalysisProps> = ({ forceSport }) =
     setError('');
     setIsLoading(true);
     setPredictions(null);
+    
     const formattedDate = new Date(selectedDate + 'T00:00:00').toLocaleDateString('fr-FR', {
         day: 'numeric',
         month: 'long',
         year: 'numeric'
     });
-    const scorerTerm = selectedSport === 'football' ? 'Buteurs' : 'Buteurs';
+    const scorerTerm = "Buteurs";
     setResultTitle(`Top 5 ${scorerTerm} Potentiels du ${formattedDate}`);
 
     try {
       const results = await geminiService.getGoalscorerPredictions(selectedDate, selectedSport);
-      if(results.length === 0){
-          setError(`L'IA n'a trouvé aucun ${scorerTerm.toLowerCase()} pertinent pour cette date. Essayez une autre date avec plus de matchs majeurs.`);
+      
+      // Filtrage des résultats incomplets au cas où l'IA hallucine des objets vides
+      const validResults = results.filter(p => p.playerName && p.playerName !== "-" && p.match);
+
+      if(validResults.length === 0){
+          setError(`L'IA n'a trouvé aucune donnée de buteur fiable pour cette date.`);
       } else {
-        setPredictions(results);
+        setPredictions(validResults);
+        databaseService.saveEntry({
+          sport: selectedSport === 'football' ? 'Football' : 'Hockey',
+          mode: 'pro',
+          type: 'goalscorer',
+          label: `Top Buteurs ${selectedSport} (${selectedDate})`,
+          data: validResults
+        });
       }
     } catch (err) {
-      setError(`Une erreur est survenue lors de la recherche des ${scorerTerm.toLowerCase()}. Veuillez réessayer.`);
+      setError(`Une erreur est survenue lors de la recherche.`);
       console.error(err);
     } finally {
       setIsLoading(false);
@@ -54,14 +67,13 @@ const GoalscorerAnalysis: React.FC<GoalscorerAnalysisProps> = ({ forceSport }) =
   };
   
   const sportName = selectedSport === 'football' ? 'Football' : 'Hockey sur Glace';
-  const scorerTerm = selectedSport === 'football' ? 'Buteurs' : 'Buteurs';
-  const actionTerm = selectedSport === 'football' ? 'marquer' : 'marquer';
+  const scorerTerm = "Buteurs";
 
   return (
     <div className="space-y-8">
        <div className="text-center p-6 bg-brand-secondary/30 rounded-xl border border-gray-700">
         <h2 className="text-2xl font-black text-brand-light uppercase tracking-tight">Analyse des {scorerTerm} <span className="text-brand-accent">| {sportName}</span></h2>
-        <p className="text-gray-400 mt-1 text-sm font-medium">Analyse IA des performances individuelles récentes et probabilités de score.</p>
+        <p className="text-gray-400 mt-1 text-sm font-medium">Probabilités individuelles de score basées sur la forme actuelle.</p>
        </div>
 
       {!forceSport && (
@@ -91,7 +103,7 @@ const GoalscorerAnalysis: React.FC<GoalscorerAnalysisProps> = ({ forceSport }) =
 
       {error && <div className="bg-red-500/20 text-red-300 p-3 rounded-md text-center font-bold border border-red-500/30">{error}</div>}
       
-      {isLoading && <Loader text={`L'IA recherche les ${scorerTerm.toLowerCase()} les plus probables...`} />}
+      {isLoading && <Loader text={`L'IA recherche les ${scorerTerm.toLowerCase()}...`} />}
 
       {predictions && (
         <div className="animate-fade-in-up">

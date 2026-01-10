@@ -2,6 +2,7 @@
 import React, { useState, useEffect } from 'react';
 import { sportsDataService } from '../services/sportsDataService';
 import { geminiService } from '../services/geminiService';
+import { databaseService } from '../services/databaseService';
 import { Sport, BetSlip as BetSlipType } from '../types';
 import Loader from './Loader';
 import BetSlip from './BetSlip';
@@ -38,20 +39,29 @@ const TicketBuilder: React.FC<TicketBuilderProps> = ({ defaultSportId }) => {
     setIsLoading(true);
     setBetSlip(null);
 
+    const sportName = sports.find(s => s.id === selectedSport)?.name || '';
+
     try {
       const result = await geminiService.buildTicket(
-        sports.find(s => s.id === selectedSport)?.name || '',
+        sportName,
         eventCount,
         `à partir du ${startDate}`
       );
       
       if (result && result.bets && result.bets.length > 0) {
         setBetSlip(result);
+        databaseService.saveEntry({
+          sport: sportName,
+          mode: 'pro',
+          type: 'ticket',
+          label: `Ticket ${eventCount} matchs (${startDate})`,
+          data: result
+        });
       } else {
-        setError("L'IA n'a pas pu générer de paris valides pour cette sélection. Essayez une autre date ou un autre sport.");
+        setError("L'IA n'a pas pu générer de paris valides pour cette sélection.");
       }
     } catch (err) {
-      setError("Une erreur est survenue lors de la création du ticket. L'IA a peut-être rencontré un problème de format. Veuillez réessayer.");
+      setError("Une erreur est survenue lors de la création du ticket.");
       console.error(err);
     } finally {
       setIsLoading(false);
