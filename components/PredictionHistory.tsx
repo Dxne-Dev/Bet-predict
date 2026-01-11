@@ -14,9 +14,13 @@ const PredictionHistory: React.FC<PredictionHistoryProps> = ({ mode }) => {
   const [isVerifying, setIsVerifying] = useState<string | null>(null);
 
   useEffect(() => {
+    refreshHistory();
+  }, [mode]);
+
+  const refreshHistory = () => {
     const data = databaseService.getHistoryByMode(mode);
     setHistory(data);
-  }, [mode]);
+  };
 
   const handleVerify = async (entry: HistoryEntry) => {
     const matchDateStr = entry.label.match(/\d{4}-\d{2}-\d{2}/)?.[0];
@@ -36,7 +40,7 @@ const PredictionHistory: React.FC<PredictionHistoryProps> = ({ mode }) => {
           verifiedAt: Date.now()
         }
       });
-      setHistory(databaseService.getHistoryByMode(mode));
+      refreshHistory();
     } catch (error) {
       console.error("Erreur de vérification:", error);
       alert("Erreur de communication avec l'IA d'audit.");
@@ -46,33 +50,31 @@ const PredictionHistory: React.FC<PredictionHistoryProps> = ({ mode }) => {
   };
 
   const handleDelete = (id: string) => {
-    const firstCheck = confirm("Voulez-vous vraiment supprimer cette entrée de votre historique ?");
-    if (firstCheck) {
-      const secondCheck = confirm("ATTENTION : Cette action est définitive. Êtes-vous certain de vouloir l'effacer ?");
-      if (secondCheck) {
-        databaseService.deleteEntry(id);
-        setHistory(databaseService.getHistoryByMode(mode));
-      }
+    if (confirm("Supprimer cette entrée définitivement ?")) {
+      databaseService.deleteEntry(id);
+      refreshHistory();
     }
   };
 
   const handleClearMode = () => {
     const modeLabel = mode === 'proPlus' ? 'PRO++' : 'PRO';
-    if (confirm(`Voulez-vous vider l'historique ${modeLabel} uniquement ?`)) {
+    if (confirm(`Voulez-vous vider l'historique ${modeLabel} ?`)) {
       databaseService.clearHistoryByMode(mode);
       setHistory([]);
     }
   };
 
   const handleFullReset = () => {
-    const firstCheck = confirm("DANGER : Voulez-vous vider l'intégralité du stockage local (LocalStorage) ?\n\nCela supprimera TOUT l'historique PRO et PRO++, ainsi que vos paramètres.");
-    if (firstCheck) {
-      const secondCheck = confirm("Êtes-vous ABSOLUMENT certain ? Cette action est irréversible et effacera toutes vos données de prédiction.");
-      if (secondCheck) {
-        databaseService.clearAll();
+    if (confirm("DANGER : Supprimer TOUTES les données de l'application (Historique PRO et PRO++) ?")) {
+      if (confirm("Êtes-vous ABSOLUMENT certain ? Cette action est irréversible.")) {
+        // 1. On vide le state React d'abord
         setHistory([]);
-        alert("L'application a été réinitialisée. Le stockage local est vide.");
-        window.location.reload(); // Recharger pour assurer un état propre
+        // 2. On vide le stockage physique
+        databaseService.clearAll();
+        // 3. On informe l'utilisateur
+        alert("Réinitialisation terminée.");
+        // 4. On recharge proprement
+        window.location.reload();
       }
     }
   };

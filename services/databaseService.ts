@@ -17,8 +17,13 @@ export const databaseService = {
   },
 
   getAllHistory: (): HistoryEntry[] => {
-    const data = localStorage.getItem(STORAGE_KEY);
-    return data ? JSON.parse(data) : [];
+    try {
+      const data = localStorage.getItem(STORAGE_KEY);
+      return data ? JSON.parse(data) : [];
+    } catch (e) {
+      console.error("Erreur de lecture du stockage", e);
+      return [];
+    }
   },
 
   getHistoryByMode: (mode: AppMode): HistoryEntry[] => {
@@ -47,7 +52,17 @@ export const databaseService = {
   },
 
   clearAll: (): void => {
-    localStorage.removeItem(STORAGE_KEY);
-    localStorage.clear(); // Vide tout le localstorage par sécurité comme demandé
+    try {
+      // Nettoyage agressif
+      Object.keys(localStorage).forEach(key => {
+        if (key.includes('sport_ai') || key === STORAGE_KEY) {
+          localStorage.removeItem(key);
+        }
+      });
+      localStorage.clear();
+      console.log("Système de stockage réinitialisé.");
+    } catch (e) {
+      console.error("Erreur critique de nettoyage", e);
+    }
   }
 };
