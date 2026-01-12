@@ -53,7 +53,7 @@ export interface HistoryEntry {
   timestamp: number;
   sport: string;
   mode: AppMode;
-  type: 'best_choice' | 'single' | 'ticket' | 'nba' | 'goalscorer' | 'mega' | 'first_half';
+  type: 'best_choice' | 'single' | 'ticket' | 'nba' | 'goalscorer' | 'mega' | 'first_half' | 'nba_prophecy';
   label: string;
   data: any;
   verification?: {
@@ -79,4 +79,39 @@ export interface NbaDigitResult {
   date: string;
   predictions: MatchDigitPrediction[];
   globalTrend?: string;
+}
+
+export interface NbaProphecyRecommendation {
+  match: string;
+  player: string;
+  bet: string;
+  odds: string;
+  confidencePercent: number;
+  confidenceLevel: string;
+  hero: {
+    usg: string;
+    detail: string;
+  };
+  faille: {
+    dvp: string;
+    detail: string;
+  };
+  scenario: {
+    history: string;
+    stats: { date: string, opponent: string, stat: string }[];
+    detail: string;
+  };
+  valueAnalysis: {
+    estimatedProbability: string;
+    impliedOdds: string;
+    valueEdge: string;
+  };
+  risks: string;
+}
+
+export interface NbaProphecyResult {
+  date: string;
+  recommendations: NbaProphecyRecommendation[];
+  sources: string[];
+  globalNote?: string;
 }

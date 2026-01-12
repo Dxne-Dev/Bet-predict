@@ -6,13 +6,14 @@ import MegaBets from './components/MegaBets';
 import FirstHalfTime from './components/FirstHalfTime';
 import GoalscorerAnalysis from './components/GoalscorerAnalysis';
 import NbaDigitAnalysis from './components/NbaDigitAnalysis';
+import NbaProphecy from './components/NbaProphecy';
 import ProPlusSelector from './components/ProPlusSelector';
 import BestChoiceAnalyst from './components/BestChoiceAnalyst';
 import PredictionHistory from './components/PredictionHistory';
 import { Sport, AppMode } from './types';
 import { sportsDataService } from './services/sportsDataService';
 
-type Tab = 'single' | 'builder' | 'mega' | 'firstHalf' | 'goalscorer' | 'nbaDigit' | 'history' | 'proPlusAnalyst';
+type Tab = 'single' | 'builder' | 'mega' | 'firstHalf' | 'goalscorer' | 'nbaDigit' | 'nbaProphecy' | 'history' | 'proPlusAnalyst';
 
 const App: React.FC = () => {
   const [activeTab, setActiveTab] = useState<Tab>('single');
@@ -47,6 +48,8 @@ const App: React.FC = () => {
         return <GoalscorerAnalysis />;
       case 'nbaDigit':
         return <NbaDigitAnalysis />;
+      case 'nbaProphecy':
+        return <NbaProphecy />;
       case 'history':
         return <PredictionHistory mode="pro" />;
       default:
@@ -141,6 +144,10 @@ const App: React.FC = () => {
                         <TabButton tabId="firstHalf" currentTab={activeTab} onClick={setActiveTab}>1ÈRE MT</TabButton>
                         <TabButton tabId="goalscorer" currentTab={activeTab} onClick={setActiveTab}>BUTEURS</TabButton>
                         <TabButton tabId="nbaDigit" currentTab={activeTab} onClick={setActiveTab}>NBA DIGIT</TabButton>
+                        <TabButton tabId="nbaProphecy" currentTab={activeTab} onClick={setActiveTab}>
+                           LA PROPHÉTIE
+                           <span className="text-[8px] bg-amber-500 text-brand-dark px-1.5 py-0.5 rounded-full animate-pulse">HOT</span>
+                        </TabButton>
                         <TabButton tabId="history" currentTab={activeTab} onClick={setActiveTab}>
                           HISTORIQUE 
                           <span className="text-[10px] bg-brand-accent/10 px-2 py-0.5 rounded-full">PRO</span>
